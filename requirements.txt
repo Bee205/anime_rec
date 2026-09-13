@@ -4,6 +4,7 @@ gspread
 google-auth
 pandas
 scikit-learn
+plotly
 =======
 streamlit
 gspread
