@@ -1,16 +1,5 @@
-<<<<<<< HEAD
 streamlit
+pandas
 gspread
 google-auth
-pandas
-scikit-learn
 plotly
-=======
-streamlit
-gspread
-google-auth
-pandas
-scikit-learn
-plotly
->>>>>>> 0cf7d861195dcf3b1553fe2c71f4fa29e5631d0f
-
