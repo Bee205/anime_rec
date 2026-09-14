@@ -5,7 +5,24 @@ from google.oauth2.service_account import Credentials
 import plotly.express as px
 
 # --- ตั้งค่าหน้าเว็บให้รองรับมือถือ ---
-st.set_page_config(page_title="Anime Hub", page_icon="🎬", layout="centered")
+st.set_page_config(page_title="Anime Hub", page_icon="🎬", layout="centered", initial_sidebar_state="expanded")
+
+# --- CSS แต่ง UI ให้ดู Modern ---
+st.markdown("""
+    <style>
+    /* แต่งปุ่มให้โค้งมนและเด่นขึ้น */
+    div.stButton > button {
+        border-radius: 10px;
+        font-weight: bold;
+        border: 2px solid #FF4B4B;
+    }
+    /* แต่งตัวเลขสถิติให้สวยขึ้น */
+    div[data-testid="stMetricValue"] {
+        font-size: 2.2rem;
+        color: #FF4B4B;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # --- ฟังก์ชันเชื่อมต่อ Google Sheets ---
 @st.cache_resource
@@ -16,97 +33,125 @@ def get_gspread_client():
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds).open_by_key(st.secrets["sheet_id"])
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=15) # ดึงข้อมูลใหม่ทุกๆ 15 วินาที
 def load_data(sheet_name):
-    sheet = get_gspread_client().worksheet(sheet_name)
-    return pd.DataFrame(sheet.get_all_records())
+    try:
+        sheet = get_gspread_client().worksheet(sheet_name)
+        return pd.DataFrame(sheet.get_all_records())
+    except Exception as e:
+        st.error(f"ไม่พบชีตชื่อ {sheet_name} กรุณาตรวจสอบใน Google Sheets")
+        return pd.DataFrame()
 
 def append_data(sheet_name, row_data):
     sheet = get_gspread_client().worksheet(sheet_name)
     sheet.append_row(row_data)
-    st.cache_data.clear() # ล้างแคชเพื่อให้ข้อมูลใหม่แสดงทันที
+    st.cache_data.clear() # ล้างแคชเพื่อให้ข้อมูลใหม่โชว์ทันที
 
-# --- จัดการ Session ---
-if "username" not in st.session_state:
-    st.session_state.username = None
-
-# --- หน้า Login ---
-if not st.session_state.username:
-    st.markdown("<h2 style='text-align: center;'>🔐 เข้าสู่ระบบ</h2>", unsafe_allow_html=True)
-    users_df = load_data("user")
-    
-    with st.form("login_form"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        submit = st.form_submit_button("Login", use_container_width=True) # ปุ่มเต็มจอสำหรับมือถือ
-        
-        if submit:
-            # ตรวจสอบรหัสผ่านแบบง่าย (โปรเจ็คเล็ก)
-            users_df["password"] = users_df["password"].astype(str)
-            valid = users_df[(users_df["username"] == username) & (users_df["password"] == str(password))]
-            if not valid.empty:
-                st.session_state.username = username
-                st.rerun()
-            else:
-                st.error("ชื่อผู้ใช้ หรือ รหัสผ่านไม่ถูกต้อง")
-    st.stop() # หยุดการทำงานไม่ให้แสดงหน้าอื่นจนกว่าจะ Login
-
-# --- UI หลัก (หลัง Login) ---
-st.markdown(f"**👤 ยินดีต้อนรับ:** {st.session_state.username}")
-
-# ใช้ Tabs เพื่อประหยัดพื้นที่บนมือถือ
-tab1, tab2 = st.tabs(["⭐ ให้คะแนน", "📊 แดชบอร์ด"])
-
-# โหลดข้อมูล
+# --- โหลดข้อมูล ---
 anime_df = load_data("anime_list")
 recieve_df = load_data("recieve")
 
-with tab1:
-    st.subheader("รีวิวอนิเมะเรื่องโปรด")
-    with st.form("rating_form"):
-        # ดึงชื่ออนิเมะมาทำ Dropdown
-        anime_names = anime_df["name"].tolist() if not anime_df.empty else []
-        selected_anime = st.selectbox("เลือกอนิเมะ", anime_names)
-        
-        ratings = st.slider("คะแนน (1-10)", 1, 10, 5)
-        submitted = st.form_submit_button("💾 บันทึกคะแนน", use_container_width=True)
+# ==========================================
+# 🧭 ระบบ Navigation (Navbar ด้านข้าง)
+# ==========================================
+with st.sidebar:
+    st.markdown("<h2 style='text-align: center;'>🎬 Anime Hub</h2>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    # เมนูเลือกหน้า
+    page = st.radio(
+        "เลือกเมนูการใช้งาน:",
+        ["📝 โหวตอนิเมะ (Rate)", "📊 แดชบอร์ดสรุปผล (Dashboard)"],
+        label_visibility="collapsed"
+    )
+    
+    st.markdown("---")
+    st.caption("© 2026 Anime Hub Project")
 
-        if submitted:
-            if selected_anime:
-                # หา id ถัดไป
+# ==========================================
+# 📄 หน้าที่ 1: หน้าโหวต (ไม่ต้องล็อกอิน)
+# ==========================================
+if page == "📝 โหวตอนิเมะ (Rate)":
+    st.title("✨ รีวิว & ให้คะแนนอนิเมะ")
+    st.markdown("เลือกอนิเมะที่คุณชื่นชอบแล้วให้คะแนนความสนุกได้เลย!")
+    
+    with st.form("rating_form", border=True):
+        # เปลี่ยนจากการดึง Session Login เป็นให้พิมพ์ชื่อแทน
+        user_name = st.text_input("👤 ชื่อของคุณ (หรือนามแฝง)")
+        
+        anime_names = anime_df["name"].tolist() if not anime_df.empty else []
+        selected_anime = st.selectbox("📺 เลือกอนิเมะ", anime_names)
+        
+        ratings = st.slider("⭐ ให้คะแนน (1-10)", 1, 10, 5)
+        
+        submit_btn = st.form_submit_button("🚀 บันทึกคะแนน", use_container_width=True)
+
+        if submit_btn:
+            if not user_name:
+                st.warning("⚠️ กรุณากรอกชื่อของคุณด้วยครับ")
+            elif not selected_anime:
+                st.warning("⚠️ กรุณาเลือกอนิเมะ")
+            else:
+                # หา ID ใหม่
                 new_id = int(recieve_df["id"].max()) + 1 if not recieve_df.empty else 1
-                # ดึงปีจากตาราง anime_list
+                # ดึงปีที่ฉาย
                 year = int(anime_df[anime_df["name"] == selected_anime]["year"].values[0])
                 
-                # บันทึกลงตาราง recieve
-                append_data("recieve", [new_id, st.session_state.username, selected_anime, ratings, year])
-                st.toast("บันทึกข้อมูลสำเร็จ! 🎉") # ใช้ toast แทนเด้ง error ใหญ่ๆ
-                st.rerun()
-            else:
-                st.error("ไม่พบข้อมูลอนิเมะ")
+                # บันทึกลงชีต recieve
+                append_data("recieve", [new_id, user_name, selected_anime, ratings, year])
+                st.success("บันทึกข้อมูลสำเร็จ! ขอบคุณสำหรับรีวิวครับ 🎉")
+                st.balloons() # ปล่อยลูกโป่งฉลอง
 
-with tab2:
-    st.subheader("📈 สรุปผลเรตติ้งทั้งหมด")
+# ==========================================
+# 📄 หน้าที่ 2: หน้าแดชบอร์ดสรุปผล
+# ==========================================
+elif page == "📊 แดชบอร์ดสรุปผล (Dashboard)":
+    st.title("📈 แดชบอร์ดสรุปเรตติ้ง")
     
     if recieve_df.empty:
-        st.info("ยังไม่มีข้อมูลรีวิว")
+        st.info("ยังไม่มีข้อมูลรีวิวในขณะนี้")
     else:
-        # สรุปตัวเลข
-        col1, col2 = st.columns(2)
-        col1.metric("จำนวนรีวิวทั้งหมด", f"{len(recieve_df)} รายการ")
-        col2.metric("คะแนนเฉลี่ยรวม", f"{recieve_df['ratings'].mean():.1f} ดาว")
+        # 1. การ์ดสรุปผล (ตัวเลขใหญ่ๆ ดึงดูดสายตา)
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("ผู้ร่วมโหวต", f"{recieve_df['user'].nunique()} คน")
+        with col2:
+            st.metric("รีวิวทั้งหมด", f"{len(recieve_df)} ครั้ง")
+        with col3:
+            st.metric("คะแนนเฉลี่ยรวม", f"{recieve_df['ratings'].mean():.2f} ⭐")
         
-        # กราฟแท่งจัดอันดับอนิเมะ (ปรับให้สวยและดูบนมือถือได้)
-        st.markdown("**🏆 คะแนนเฉลี่ยรายเรื่อง**")
+        st.markdown("---")
+
+        # 2. กราฟจัดอันดับอนิเมะ (Top 10)
+        st.subheader("🏆 10 อันดับอนิเมะคะแนนสูงสุด")
+        
+        # คำนวณคะแนนเฉลี่ยและดึงมา 10 อันดับแรก
         avg_rating = recieve_df.groupby("anime_name")["ratings"].mean().reset_index()
-        avg_rating = avg_rating.sort_values("ratings", ascending=True)
+        avg_rating = avg_rating.sort_values("ratings", ascending=False).head(10)
+        avg_rating = avg_rating.sort_values("ratings", ascending=True) # กลับด้านให้แสดงจากมากไปน้อย (Plotly แถวบนสุดคือข้อมูลท้ายสุด)
         
-        fig = px.bar(avg_rating, x="ratings", y="anime_name", orientation='h', 
-                     color="ratings", color_continuous_scale="Viridis", height=300)
-        fig.update_layout(xaxis_title="คะแนน", yaxis_title="", margin=dict(l=0, r=0, t=0, b=0))
+        # วาดกราฟ
+        fig = px.bar(
+            avg_rating, x="ratings", y="anime_name", orientation='h', 
+            color="ratings", color_continuous_scale="Magma", height=400,
+            text_auto='.1f' # แสดงตัวเลขบนกราฟ
+        )
+        fig.update_layout(
+            xaxis_title="คะแนนเฉลี่ย", 
+            yaxis_title="", 
+            margin=dict(l=0, r=0, t=20, b=0),
+            plot_bgcolor="rgba(0,0,0,0)" # ทำให้พื้นหลังกราฟใส
+        )
         st.plotly_chart(fig, use_container_width=True)
         
-        # แสดงข้อมูลล่าสุด
-        st.markdown("**🕒 รีวิวล่าสุด**")
-        # ซ่อน index และแสดง 5 รายการล่าสุด
-        st.dataframe(recieve_df.tail(5).sort_values("id", ascending=False), use_container_width=True, hide_index=True)
+        st.markdown("---")
+
+        # 3. ตารางแสดงข้อมูลฟีดล่าสุด
+        st.subheader("🕒 ฟีดรีวิวล่าสุด")
+        
+        # จัดการ Dataframe ใหม่ให้สวยขึ้นก่อนโชว์
+        display_df = recieve_df.sort_values("id", ascending=False)[["user", "anime_name", "ratings", "year"]]
+        display_df.columns = ["ชื่อผู้โหวต", "อนิเมะ", "คะแนนโหวต", "ปีที่ฉาย"]
+        
+        # โชว์แค่ 10 รายการล่าสุด และซ่อนเลข Index
+        st.dataframe(display_df.head(10), use_container_width=True, hide_index=True)
