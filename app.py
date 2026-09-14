@@ -4,10 +4,11 @@ import gspread
 from google.oauth2.service_account import Credentials
 import plotly.express as px
 
-# --- ตั้งค่าหน้าเว็บให้รองรับมือถือ ---
+# ==========================================
+# ⚙️ ตั้งค่าหน้าเว็บและ CSS
+# ==========================================
 st.set_page_config(page_title="Anime Hub", page_icon="🎬", layout="centered", initial_sidebar_state="expanded")
 
-# --- CSS แต่ง UI ให้ดู Modern ---
 st.markdown("""
     <style>
     /* แต่งปุ่มให้โค้งมนและเด่นขึ้น */
@@ -15,6 +16,11 @@ st.markdown("""
         border-radius: 10px;
         font-weight: bold;
         border: 2px solid #FF4B4B;
+        transition: 0.3s;
+    }
+    div.stButton > button:hover {
+        background-color: #FF4B4B;
+        color: white;
     }
     /* แต่งตัวเลขสถิติให้สวยขึ้น */
     div[data-testid="stMetricValue"] {
@@ -24,7 +30,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- ฟังก์ชันเชื่อมต่อ Google Sheets ---
+# ==========================================
+# 🔌 ระบบเชื่อมต่อฐานข้อมูล Google Sheets
+# ==========================================
 @st.cache_resource
 def get_gspread_client():
     scope = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -33,7 +41,7 @@ def get_gspread_client():
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds).open_by_key(st.secrets["sheet_id"])
 
-@st.cache_data(ttl=15) # ดึงข้อมูลใหม่ทุกๆ 15 วินาที
+@st.cache_data(ttl=15) # อัปเดตข้อมูลทุก 15 วินาที
 def load_data(sheet_name):
     try:
         sheet = get_gspread_client().worksheet(sheet_name)
@@ -45,9 +53,9 @@ def load_data(sheet_name):
 def append_data(sheet_name, row_data):
     sheet = get_gspread_client().worksheet(sheet_name)
     sheet.append_row(row_data)
-    st.cache_data.clear() # ล้างแคชเพื่อให้ข้อมูลใหม่โชว์ทันที
+    st.cache_data.clear() # ล้างแคชเพื่อให้ข้อมูลใหม่แสดงทันที
 
-# --- โหลดข้อมูล ---
+# โหลดข้อมูลมาเก็บไว้ในตัวแปร
 anime_df = load_data("anime_list")
 recieve_df = load_data("recieve")
 
@@ -58,10 +66,9 @@ with st.sidebar:
     st.markdown("<h2 style='text-align: center;'>🎬 Anime Hub</h2>", unsafe_allow_html=True)
     st.markdown("---")
     
-    # เมนูเลือกหน้า
     page = st.radio(
         "เลือกเมนูการใช้งาน:",
-        ["📝 โหวตอนิเมะ (Rate)", "📊 แดชบอร์ดสรุปผล (Dashboard)"],
+        ["📝 โหวตอนิเมะ (Rate)", "📊 แดชบอร์ดสรุปผล", "🎯 อนิเมะแนะนำ"],
         label_visibility="collapsed"
     )
     
@@ -69,14 +76,13 @@ with st.sidebar:
     st.caption("© 2026 Anime Hub Project")
 
 # ==========================================
-# 📄 หน้าที่ 1: หน้าโหวต (ไม่ต้องล็อกอิน)
+# 📄 หน้าที่ 1: โหวตอนิเมะ
 # ==========================================
 if page == "📝 โหวตอนิเมะ (Rate)":
     st.title("✨ รีวิว & ให้คะแนนอนิเมะ")
     st.markdown("เลือกอนิเมะที่คุณชื่นชอบแล้วให้คะแนนความสนุกได้เลย!")
     
     with st.form("rating_form", border=True):
-        # เปลี่ยนจากการดึง Session Login เป็นให้พิมพ์ชื่อแทน
         user_name = st.text_input("👤 ชื่อของคุณ (หรือนามแฝง)")
         
         anime_names = anime_df["name"].tolist() if not anime_df.empty else []
@@ -92,26 +98,25 @@ if page == "📝 โหวตอนิเมะ (Rate)":
             elif not selected_anime:
                 st.warning("⚠️ กรุณาเลือกอนิเมะ")
             else:
-                # หา ID ใหม่
+                # สร้าง ID อัตโนมัติและดึงปีฉาย
                 new_id = int(recieve_df["id"].max()) + 1 if not recieve_df.empty else 1
-                # ดึงปีที่ฉาย
                 year = int(anime_df[anime_df["name"] == selected_anime]["year"].values[0])
                 
-                # บันทึกลงชีต recieve
+                # บันทึกลงตาราง
                 append_data("recieve", [new_id, user_name, selected_anime, ratings, year])
-                st.success("บันทึกข้อมูลสำเร็จ! ขอบคุณสำหรับรีวิวครับ 🎉")
-                st.balloons() # ปล่อยลูกโป่งฉลอง
+                st.success(f"บันทึกข้อมูลของ {user_name} สำเร็จ! ขอบคุณสำหรับรีวิวครับ 🎉")
+                st.balloons()
 
 # ==========================================
-# 📄 หน้าที่ 2: หน้าแดชบอร์ดสรุปผล
+# 📄 หน้าที่ 2: แดชบอร์ดสรุปผล
 # ==========================================
-elif page == "📊 แดชบอร์ดสรุปผล (Dashboard)":
+elif page == "📊 แดชบอร์ดสรุปผล":
     st.title("📈 แดชบอร์ดสรุปเรตติ้ง")
     
     if recieve_df.empty:
         st.info("ยังไม่มีข้อมูลรีวิวในขณะนี้")
     else:
-        # 1. การ์ดสรุปผล (ตัวเลขใหญ่ๆ ดึงดูดสายตา)
+        # การ์ดสรุปผล
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("ผู้ร่วมโหวต", f"{recieve_df['user'].nunique()} คน")
@@ -122,36 +127,71 @@ elif page == "📊 แดชบอร์ดสรุปผล (Dashboard)":
         
         st.markdown("---")
 
-        # 2. กราฟจัดอันดับอนิเมะ (Top 10)
+        # กราฟจัดอันดับอนิเมะ Top 10
         st.subheader("🏆 10 อันดับอนิเมะคะแนนสูงสุด")
-        
-        # คำนวณคะแนนเฉลี่ยและดึงมา 10 อันดับแรก
         avg_rating = recieve_df.groupby("anime_name")["ratings"].mean().reset_index()
         avg_rating = avg_rating.sort_values("ratings", ascending=False).head(10)
-        avg_rating = avg_rating.sort_values("ratings", ascending=True) # กลับด้านให้แสดงจากมากไปน้อย (Plotly แถวบนสุดคือข้อมูลท้ายสุด)
+        avg_rating = avg_rating.sort_values("ratings", ascending=True) 
         
-        # วาดกราฟ
         fig = px.bar(
             avg_rating, x="ratings", y="anime_name", orientation='h', 
             color="ratings", color_continuous_scale="Magma", height=400,
-            text_auto='.1f' # แสดงตัวเลขบนกราฟ
+            text_auto='.1f'
         )
         fig.update_layout(
             xaxis_title="คะแนนเฉลี่ย", 
             yaxis_title="", 
             margin=dict(l=0, r=0, t=20, b=0),
-            plot_bgcolor="rgba(0,0,0,0)" # ทำให้พื้นหลังกราฟใส
+            plot_bgcolor="rgba(0,0,0,0)"
         )
         st.plotly_chart(fig, use_container_width=True)
         
         st.markdown("---")
 
-        # 3. ตารางแสดงข้อมูลฟีดล่าสุด
+        # ตารางแสดงฟีดล่าสุด
         st.subheader("🕒 ฟีดรีวิวล่าสุด")
-        
-        # จัดการ Dataframe ใหม่ให้สวยขึ้นก่อนโชว์
         display_df = recieve_df.sort_values("id", ascending=False)[["user", "anime_name", "ratings", "year"]]
         display_df.columns = ["ชื่อผู้โหวต", "อนิเมะ", "คะแนนโหวต", "ปีที่ฉาย"]
-        
-        # โชว์แค่ 10 รายการล่าสุด และซ่อนเลข Index
         st.dataframe(display_df.head(10), use_container_width=True, hide_index=True)
+
+# ==========================================
+# 📄 หน้าที่ 3: ระบบแนะนำอนิเมะ (Recommendation)
+# ==========================================
+elif page == "🎯 อนิเมะแนะนำ":
+    st.title("🎯 อนิเมะที่คุณอาจจะชอบ")
+    st.markdown("ระบบจะคัดกรองอนิเมะระดับท็อปที่คุณ **ยังไม่เคยโหวต** มาแนะนำให้ครับ")
+    
+    if recieve_df.empty:
+        st.info("ยังไม่มีข้อมูลเรตติ้งในระบบ กรุณาโหวตก่อนเพื่อใช้งานระบบแนะนำ")
+    else:
+        # ฟอร์มค้นหาชื่อเพื่อเช็คประวัติการดู
+        search_user = st.text_input("🔍 พิมพ์ชื่อของคุณ (ชื่อเดียวกับที่ใช้โหวต)")
+        
+        if search_user:
+            # คำนวณคะแนนเฉลี่ยของทุกเรื่องจากตาราง recieve
+            avg_df = recieve_df.groupby("anime_name")["ratings"].mean().reset_index()
+            
+            # หาลิสต์อนิเมะที่ user คนนี้เคยโหวตแล้ว
+            watched_list = recieve_df[recieve_df["user"] == search_user]["anime_name"].tolist()
+            
+            if watched_list:
+                st.caption(f"👀 คุณเคยให้คะแนนไปแล้ว {len(watched_list)} เรื่อง")
+            
+            # ตัดเรื่องที่ดูแล้วออก
+            recommend_df = avg_df[~avg_df["anime_name"].isin(watched_list)]
+            
+            # ดึง Top 5 เรื่องที่คะแนนสูงที่สุดที่เหลืออยู่
+            top_recs = recommend_df.sort_values("ratings", ascending=False).head(5)
+            
+            if top_recs.empty:
+                st.success("สุดยอดมาก! คุณให้คะแนนอนิเมะในระบบของเราครบทุกเรื่องแล้ว 🎉")
+            else:
+                st.subheader("🔥 5 อันดับอนิเมะห้ามพลาดสำหรับคุณ")
+                
+                # นำไป Join กับ anime_df เพื่อเอา "ปีที่ฉาย" มาแสดงด้วย
+                final_display = pd.merge(top_recs, anime_df, left_on="anime_name", right_on="name", how="left")
+                final_display = final_display[["anime_name", "year", "ratings"]]
+                final_display.columns = ["ชื่ออนิเมะ", "ปีที่ฉาย", "คะแนนเฉลี่ยจากผู้ใช้"]
+                
+                # แสดงเป็นตารางสวยๆ
+                st.dataframe(final_display, use_container_width=True, hide_index=True)
